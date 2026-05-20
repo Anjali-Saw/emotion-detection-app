@@ -1,6 +1,6 @@
-streamlit==1.31.1
-streamlit-webrtc==0.47.1
-opencv-python-headless
+streamlit==1.39.0
+streamlit-webrtc==0.47.9
+opencv-python-headless==4.10.0.84
 tensorflow==2.20.0
-numpy
-av
+numpy==1.26.4
+av==12.3.0
