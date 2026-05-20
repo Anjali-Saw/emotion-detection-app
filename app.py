@@ -1,12 +1,16 @@
-import streamlit as st
 import cv2
 import numpy as np
-from tensorflow.keras.models import load_model
+import tensorflow as tf
 
-# Load model
-model = load_model("final_emotion_model.keras")
 
-# Emotion labels
+interpreter = tf.lite.Interpreter(model_path="emotion_model_quant.tflite")
+interpreter.allocate_tensors()
+
+
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+
 classes = [
     "Angry",
     "Disgust",
@@ -17,88 +21,72 @@ classes = [
     "Surprise"
 ]
 
-# Load Haarcascade
+
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
-# Streamlit UI
-st.title("Real-Time Emotion Detection")
 
-run = st.checkbox("Start Webcam")
-
-FRAME_WINDOW = st.image([])
-
-# Webcam
 cap = cv2.VideoCapture(0)
 
-while run:
-
+while True:
     ret, frame = cap.read()
 
     if not ret:
-        st.write("Failed to access webcam")
         break
 
-    # Flip webcam
-    frame = cv2.flip(frame, 1)
+    
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # Convert to grayscale
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    # Detect faces
+    
     faces = face_cascade.detectMultiScale(
-        gray_frame,
+        gray,
         scaleFactor=1.3,
         minNeighbors=5
     )
 
-    # Process faces
     for (x, y, w, h) in faces:
 
-        cv2.rectangle(
-            frame,
-            (x, y),
-            (x + w, y + h),
-            (0, 255, 0),
-            2
-        )
+       
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
 
-        face = gray_frame[y:y+h, x:x+w]
+        
+        face = gray[y:y+h, x:x+w]
 
-        # Improve contrast
-        face = cv2.equalizeHist(face)
+      
+        face = cv2.resize(face, (48, 48))
 
-        img = cv2.resize(face, (48, 48))
+        
+        face = face / 255.0
 
-        img = img / 255.0
+        
+        face = np.reshape(face, (1, 48, 48, 1)).astype(np.float32)
 
-        img = np.reshape(img, (1, 48, 48, 1))
+       
+        interpreter.set_tensor(input_details[0]['index'], face)
+        interpreter.invoke()
 
-        # Prediction
-        prediction = model.predict(img, verbose=0)
+        prediction = interpreter.get_tensor(output_details[0]['index'])
 
-        class_index = np.argmax(prediction)
+        emotion = classes[np.argmax(prediction)]
 
-        confidence = np.max(prediction)
-
-        emotion = classes[class_index]
-
-        # Display prediction
+       
         cv2.putText(
             frame,
-            f"{emotion} ({confidence*100:.1f}%)",
-            (x, y - 10),
+            emotion,
+            (x, y-10),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
+            1,
             (0, 255, 0),
             2
         )
 
-    # Convert BGR to RGB
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+   
+    cv2.imshow("Emotion Detection", frame)
 
-    # Show frame in Streamlit
-    FRAME_WINDOW.image(frame)
+    
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cap.release()
+cv2.destroyAllWindows()
