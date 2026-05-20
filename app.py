@@ -79,5 +79,14 @@ class EmotionDetector(VideoTransformerBase):
 
 webrtc_streamer(
     key="emotion",
-    video_transformer_factory=EmotionDetector
+    video_transformer_factory=EmotionDetector,
+    rtc_configuration={
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]}
+        ]
+    },
+    media_stream_constraints={
+        "video": True,
+        "audio": False
+    },
 )
