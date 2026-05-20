@@ -1,14 +1,17 @@
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-import av
 import cv2
+import av
 import numpy as np
 import tensorflow as tf
 
 st.title("Live Emotion Detection")
 
-# Load model
-interpreter = tf.lite.Interpreter(model_path="emotion_model_quant.tflite")
+# Load TFLite model
+interpreter = tf.lite.Interpreter(
+    model_path="emotion_model_quant.tflite"
+)
+
 interpreter.allocate_tensors()
 
 input_details = interpreter.get_input_details()
@@ -25,64 +28,98 @@ classes = [
     "Surprise"
 ]
 
-# Face detector
+# Load face detector
 face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    cv2.data.haarcascades +
+    "haarcascade_frontalface_default.xml"
 )
 
 class EmotionDetector(VideoTransformerBase):
 
     def transform(self, frame):
+
+        # Convert frame
         img = frame.to_ndarray(format="bgr24")
+
+        # Resize for stability
+        img = cv2.resize(img, (640, 480))
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
+        # Detect faces
         faces = face_cascade.detectMultiScale(
             gray,
-            scaleFactor=1.3,
-            minNeighbors=5
+            scaleFactor=1.1,
+            minNeighbors=7
         )
 
         for (x, y, w, h) in faces:
 
-            cv2.rectangle(img, (x, y), (x+w, y+h), (255, 0, 0), 2)
+            try:
 
-            face = gray[y:y+h, x:x+w]
+                # Draw rectangle
+                cv2.rectangle(
+                    img,
+                    (x, y),
+                    (x + w, y + h),
+                    (255, 0, 0),
+                    2
+                )
 
-            face = cv2.resize(face, (48, 48))
+                # Extract face
+                face = gray[y:y+h, x:x+w]
 
-            face = face / 255.0
+                # Resize
+                face = cv2.resize(face, (48, 48))
 
-            face = np.reshape(face, (1, 48, 48, 1)).astype(np.float32)
+                # Normalize
+                face = face / 255.0
 
-            # Prediction
-            interpreter.set_tensor(input_details[0]['index'], face)
-            interpreter.invoke()
+                # Reshape
+                face = np.reshape(
+                    face,
+                    (1, 48, 48, 1)
+                ).astype(np.float32)
 
-            prediction = interpreter.get_tensor(
-                output_details[0]['index']
-            )
+                # Prediction
+                interpreter.set_tensor(
+                    input_details[0]['index'],
+                    face
+                )
 
-            emotion = classes[np.argmax(prediction)]
+                interpreter.invoke()
 
-            cv2.putText(
-                img,
-                emotion,
-                (x, y-10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 0),
-                2
-            )
+                prediction = interpreter.get_tensor(
+                    output_details[0]['index']
+                )
+
+                emotion = classes[np.argmax(prediction)]
+
+                # Show emotion
+                cv2.putText(
+                    img,
+                    emotion,
+                    (x, y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 255, 0),
+                    2
+                )
+
+            except Exception as e:
+                print(e)
 
         return img
 
+# WebRTC Stream
 webrtc_streamer(
     key="emotion",
     video_transformer_factory=EmotionDetector,
+    async_processing=True,
     rtc_configuration={
         "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]}
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {"urls": ["stun:stun1.l.google.com:19302"]},
         ]
     },
     media_stream_constraints={
